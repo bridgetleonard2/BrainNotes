@@ -1,0 +1,1088 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrainNotes</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='10' cy='12' r='6' fill='%23F4A48A'/%3E%3Ccircle cx='22' cy='12' r='6' fill='%23A99BE3'/%3E%3Ccircle cx='16' cy='22' r='6' fill='%237ECDB0'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#F2EEE8; --panel:#FAF8F5; --card:#FFFFFF; --ink:#2F2B27; --ink2:#5C554E; --muted:#8C847B; --faint:#B9B1A7;
+    --rule:#E6E0D7; --chip:#EFEAE3; --hover:#F3EEE8; --ok:#9DBF7E; --warn:#EE90AA;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font:14px/1.45 "Segoe UI Variable Text","Segoe UI",Inter,system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+  button{font:inherit;color:inherit}
+  #app{display:flex;height:100vh;overflow:hidden}
+
+  /* ---------- stage ---------- */
+  #stage{position:relative;flex:1;min-width:0;background:radial-gradient(ellipse at 50% 45%,#F8F5F1 0%,var(--bg) 70%)}
+  #gl{display:block;width:100%;height:100%;outline:none;cursor:grab}
+  #gl:active{cursor:grabbing}
+  #stage.adding #gl{cursor:crosshair}
+  #stage.overnode #gl{cursor:pointer}
+  .float{position:absolute;display:flex;align-items:center;gap:2px;padding:4px;background:rgba(250,248,245,.86);
+    backdrop-filter:blur(8px);border:1px solid var(--rule);border-radius:12px}
+  #views{top:16px;left:16px}
+  .vbtn{border:0;background:transparent;padding:5px 9px;border-radius:8px;font-size:12.5px;color:var(--ink2);cursor:pointer}
+  .vbtn:hover{background:var(--chip);color:var(--ink)}
+  .sep{width:1px;height:18px;background:var(--rule);margin:0 6px}
+  .glass{display:flex;align-items:center;gap:8px;padding:0 6px 0 2px;font-size:12.5px;color:var(--ink2)}
+  input[type=range]{width:92px;accent-color:var(--ink2)}
+  #addBtn{position:absolute;top:16px;right:16px}
+  #readout{bottom:16px;left:16px;padding:6px 12px;font-size:12.5px;color:var(--ink2);font-variant-numeric:tabular-nums;gap:10px}
+  #readout b{font-weight:600;color:var(--muted);letter-spacing:.06em;font-size:11px}
+  #help{position:absolute;bottom:20px;right:18px;font-size:11.5px;color:var(--faint);text-align:right;pointer-events:none}
+  #labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  .label{position:absolute;transform:translate(-50%,calc(-100% - 12px));font-size:11.5px;padding:2px 8px;border-radius:999px;
+    background:rgba(255,255,255,.9);border:1px solid var(--rule);white-space:nowrap;color:var(--ink);display:flex;align-items:center;gap:5px}
+  .label i{width:7px;height:7px;border-radius:50%;display:inline-block}
+  #tip{position:absolute;pointer-events:none;background:rgba(255,255,255,.96);border:1px solid var(--rule);border-radius:10px;
+    padding:7px 10px;font-size:12.5px;box-shadow:0 6px 20px rgba(47,43,39,.08);max-width:260px;transform:translate(14px,14px)}
+  #tip .t{font-weight:600;display:flex;align-items:center;gap:6px}
+  #tip .s{color:var(--muted);font-variant-numeric:tabular-nums}
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;pointer-events:none}
+  .overlay.block{pointer-events:auto;background:var(--bg);padding:24px;text-align:center;color:var(--ink2);line-height:1.6}
+
+  /* ---------- panel ---------- */
+  #panel{width:410px;flex:none;background:var(--panel);border-left:1px solid var(--rule);display:flex;flex-direction:column;min-height:0}
+  .phead{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 14px;border-bottom:1px solid var(--rule)}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:16px;letter-spacing:-.01em}
+  .dots{display:inline-flex;gap:3px}.dots i{width:8px;height:8px;border-radius:50%;display:block}
+  .hright{display:flex;align-items:center;gap:8px}
+  .status{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .status::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--faint)}
+  .status.saved::before{background:var(--ok)} .status.offline::before{background:var(--warn)}
+  .banner{margin:12px 20px 0;padding:9px 12px;border-radius:10px;background:#FBEFF1;color:#8A4256;font-size:12.5px}
+  .pbody{flex:1;overflow:auto;min-height:0}
+  .section{padding:16px 20px}
+  .section + .section{border-top:1px solid var(--rule)}
+
+  input,textarea,select{font:inherit;font-size:13.5px;color:var(--ink);background:var(--card);border:1px solid var(--rule);
+    border-radius:9px;padding:7px 10px;width:100%;outline:none}
+  input:focus,textarea:focus,select:focus{border-color:#C9BFB3;box-shadow:0 0 0 3px rgba(47,43,39,.05)}
+  textarea{resize:vertical}
+  input[type=search]{padding-left:32px;background:var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23A39A90' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 11px center}
+
+  .btn{border:1px solid var(--rule);background:var(--card);border-radius:9px;padding:6px 12px;font-size:13px;cursor:pointer;white-space:nowrap}
+  .btn:hover{background:var(--hover)}
+  .btn.primary{background:var(--ink);border-color:var(--ink);color:#FAF8F5}
+  .btn.primary:hover{background:#45403a}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--ink2)}
+  .btn.ghost:hover{background:var(--chip)}
+  .btn.sm{padding:3px 8px;font-size:12px;border-radius:7px}
+  .btn.danger:hover{color:#A8455E}
+
+  .tabs{display:flex;gap:20px;border-bottom:1px solid var(--rule);margin-top:14px}
+  .tab{border:0;background:none;padding:8px 0;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;font-size:13px}
+  .tab span{font-size:11.5px;color:var(--faint);margin-left:3px;font-variant-numeric:tabular-nums}
+  .tab.active{color:var(--ink);border-bottom-color:var(--ink)}
+  .tabs.small{gap:16px;margin:0 0 12px}
+
+  .list{max-height:min(34vh,330px);overflow:auto;margin:8px -8px 0;padding:0 2px}
+  .item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:9px;cursor:pointer}
+  .item:hover{background:var(--hover)}
+  .item.active{background:var(--chip)}
+  .item .name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .item .two{min-width:0;display:flex;flex-direction:column}
+  .item .sub{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .count{margin-left:auto;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;padding-left:8px}
+  .empty{color:var(--muted);font-size:13px;padding:10px}
+  .dot{width:10px;height:10px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}
+  .dot.big{width:14px;height:14px}
+  .stack{display:flex;flex:none}.stack .dot{width:9px;height:9px;margin-right:-3px;box-shadow:0 0 0 1.5px var(--panel)}
+
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;background:var(--chip);border:0;font-size:12.5px;line-height:1.6}
+  button.chip{cursor:pointer}button.chip:hover{background:#E6DFD6}
+  .chip .x{border:0;background:none;padding:0;cursor:pointer;color:var(--muted);font-size:14px;line-height:1}
+  .chip .x:hover{color:var(--ink)}
+
+  .dhead{display:flex;align-items:center;gap:10px}
+  .dhead h3{margin:0;font-size:17px;font-weight:600;letter-spacing:-.01em;flex:1;min-width:0}
+  .kicker{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  .meta{color:var(--muted);font-size:12.5px;margin:4px 0 12px}
+  .ncard{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:12px 14px;margin-top:10px}
+  .ncard.active{border-color:#CFC5B9;box-shadow:0 2px 10px rgba(47,43,39,.05)}
+  .nrow{display:flex;align-items:center;gap:6px}
+  .mono{font-variant-numeric:tabular-nums;font-feature-settings:"tnum";color:var(--ink2);font-size:13px}
+  .spacer{flex:1}
+  .field{margin-top:10px}
+  .flabel{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+  .plink{border:0;background:none;padding:0;cursor:pointer;font-weight:600;text-decoration:underline;text-decoration-color:var(--faint);text-underline-offset:3px}
+  .plink:hover{text-decoration-color:var(--ink)}
+  .paper{margin-bottom:6px}
+  .paper .ttl{color:var(--ink2);font-size:12.5px}
+  a.ext{color:var(--muted);font-size:12px;text-decoration:none;margin-left:6px}
+  a.ext:hover{color:var(--ink)}
+  .notes{white-space:pre-wrap;color:var(--ink2);font-size:13px}
+  .cite{color:var(--ink2);font-size:13px;margin:6px 0 10px}
+  .roiline{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-top:1px solid var(--rule)}
+  .roiline:first-child{border-top:0}
+  .roiline .dot{margin-top:5px}
+  .roiline .body{flex:1;min-width:0}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:4px 0 14px}
+  .stat{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:8px 10px}
+  .stat b{display:block;font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+  .stat span{font-size:11.5px;color:var(--muted)}
+  .muted{color:var(--muted)}
+  pre.bib{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:10px 12px;font:12px/1.5 Consolas,ui-monospace,monospace;
+    white-space:pre-wrap;word-break:break-word;color:var(--ink2);max-height:220px;overflow:auto}
+
+  /* form */
+  .ftitle{display:flex;align-items:center;justify-content:space-between}
+  .ftitle h2{margin:0;font-size:17px;font-weight:600}
+  .hint{color:var(--muted);font-size:12.5px;margin:6px 0 4px}
+  .lbl{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+  .xyz{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .xyz label{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12.5px}
+  .chipbox{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 6px;border:1px solid var(--rule);border-radius:9px;background:var(--card)}
+  .chipbox input{border:0;flex:1;min-width:130px;padding:3px 4px;box-shadow:none !important}
+  .chipbox:focus-within{border-color:#C9BFB3}
+  #paperChips{margin-bottom:8px;border:0;padding:0;background:none}
+  .row{display:flex;gap:8px;align-items:center}
+  .row.end{justify-content:flex-end;margin-top:14px}
+  .subcard{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:12px 14px;margin-top:10px}
+  .subcard input,.subcard textarea{margin-bottom:8px}
+  .preview{font-size:12.5px;color:var(--ink2)}
+  .err{color:#A8455E;font-size:12.5px;margin-top:8px}
+  .grid2{display:grid;grid-template-columns:1fr 90px;gap:8px}
+
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#FAF8F5;padding:8px 14px;border-radius:10px;
+    font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:10}
+  #toast.show{opacity:1}
+
+  @media (max-width:860px){
+    #app{flex-direction:column;height:auto;min-height:100vh;overflow:visible}
+    #stage{height:56vh;flex:none}
+    #panel{width:auto;border-left:0;border-top:1px solid var(--rule)}
+    #help{display:none}
+    #views{left:8px;right:8px;top:8px;flex-wrap:wrap}
+    #addBtn{top:auto;bottom:16px;right:16px}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <main id="stage">
+    <canvas id="gl" tabindex="0"></canvas>
+    <div id="labels"></div>
+    <div id="views" class="float">
+      <button class="vbtn" data-view="L" title="Left lateral">L</button>
+      <button class="vbtn" data-view="R" title="Right lateral">R</button>
+      <button class="vbtn" data-view="A" title="Anterior">Front</button>
+      <button class="vbtn" data-view="P" title="Posterior">Back</button>
+      <button class="vbtn" data-view="S" title="Superior">Top</button>
+      <button class="vbtn" data-view="I" title="Inferior">Bottom</button>
+      <span class="sep"></span>
+      <label class="glass" title="Brain opacity">Glass <input id="opacity" type="range" min="0.04" max="1" step="0.01" value="0.14"></label>
+    </div>
+    <button id="addBtn" class="btn primary">+ Add node</button>
+    <div id="readout" class="float"><b>MNI</b><span id="rxyz">—</span></div>
+    <div id="help">drag to rotate · scroll to zoom · right-drag to pan<br>double-click the brain to add a node there</div>
+    <div id="tip" hidden></div>
+    <div id="loading" class="overlay">Loading MNI152 brain…</div>
+    <div id="fileWarn" class="overlay block" hidden>
+      <div><b>Open BrainNotes with its launcher</b><br>Double-click <b>BrainNotes.bat</b> (Windows) or <b>BrainNotes.command</b> (Mac) in this folder.<br>It starts a small local helper that loads the brain and saves your notes and .bib.</div>
+    </div>
+  </main>
+
+  <aside id="panel">
+    <header class="phead">
+      <div class="brand"><span class="dots"><i style="background:#F4A48A"></i><i style="background:#A99BE3"></i><i style="background:#7ECDB0"></i></span>BrainNotes</div>
+      <div class="hright"><span id="status" class="status">Loading</span><button id="exportBtn" class="btn ghost sm" title="Download a backup copy of notes.json">Export</button></div>
+    </header>
+    <div id="banner" class="banner" hidden>Not connected, so changes aren't being saved. Start BrainNotes again (<b>BrainNotes.bat</b> / <b>BrainNotes.command</b>) to resume saving.</div>
+
+    <!-- investigate -->
+    <div id="investigate" class="pbody">
+      <div class="section">
+        <input id="search" type="search" placeholder="Search ROIs, tasks, papers…" autocomplete="off">
+        <div class="tabs" id="tabs">
+          <button class="tab active" data-tab="roi">ROIs<span></span></button>
+          <button class="tab" data-tab="task">Tasks<span></span></button>
+          <button class="tab" data-tab="paper">Papers<span></span></button>
+        </div>
+        <div id="list" class="list"></div>
+      </div>
+      <div id="detail" class="section"></div>
+    </div>
+
+    <!-- add / edit form -->
+    <div id="formView" class="pbody" hidden>
+      <div class="section">
+        <div class="ftitle"><h2 id="formTitle">New node</h2><button class="btn ghost sm" data-close>Close</button></div>
+        <p class="hint">Click the brain to drop a point on the surface, or type MNI coordinates. Clicks land on the cortex, so type or nudge coordinates for deep structures like the amygdala.</p>
+
+        <label class="lbl">MNI coordinates (mm)</label>
+        <div class="xyz">
+          <label>x<input id="fx" type="number" step="1"></label>
+          <label>y<input id="fy" type="number" step="1"></label>
+          <label>z<input id="fz" type="number" step="1"></label>
+        </div>
+
+        <label class="lbl" for="froi">ROI name</label>
+        <input id="froi" list="roiOptions" placeholder="e.g. Left amygdala" autocomplete="off">
+
+        <label class="lbl" for="ftask">Implicated in</label>
+        <div class="chipbox" id="taskBox"><input id="ftask" list="taskOptions" placeholder="type a task or function, press Enter" autocomplete="off"></div>
+
+        <label class="lbl">Paper</label>
+        <div class="chips" id="paperChips"></div>
+        <select id="paperSelect"></select>
+
+        <div id="newPaper" class="subcard" hidden>
+          <div class="tabs small" id="npTabs">
+            <button class="tab active" data-np="doi">DOI lookup</button>
+            <button class="tab" data-np="bib">Paste BibTeX</button>
+            <button class="tab" data-np="manual">Manual</button>
+          </div>
+          <div data-npv="doi">
+            <div class="row"><input id="npDoi" placeholder="10.1038/s41593-…  or a doi.org link" style="margin:0"><button class="btn" id="npDoiGo">Look up</button></div>
+          </div>
+          <div data-npv="bib" hidden>
+            <textarea id="npBib" rows="6" placeholder="@article{key,&#10;  author = {…},&#10;  …&#10;}"></textarea>
+          </div>
+          <div data-npv="manual" hidden>
+            <input id="npAuthor" placeholder="Authors: Lastname, First and Lastname, First">
+            <div class="grid2"><input id="npTitle" placeholder="Title"><input id="npYear" placeholder="Year"></div>
+            <input id="npJournal" placeholder="Journal">
+            <input id="npDoiManual" placeholder="DOI (optional)">
+          </div>
+          <div id="npPreview" class="preview"></div>
+          <div class="row end"><button class="btn ghost" id="npCancel">Cancel</button><button class="btn primary" id="npAdd">Add paper</button></div>
+        </div>
+
+        <label class="lbl" for="fnotes">Notes</label>
+        <textarea id="fnotes" rows="3" placeholder="Contrast, peak stats, anything you want to remember…"></textarea>
+
+        <div id="formErr" class="err" hidden></div>
+        <div class="row end">
+          <button class="btn danger" id="formDelete" hidden>Delete</button><span class="spacer"></span>
+          <button class="btn" data-close>Cancel</button><button class="btn primary" id="formSave">Save node</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+<datalist id="roiOptions"></datalist>
+<datalist id="taskOptions"></datalist>
+<div id="toast"></div>
+
+<script>
+  if (location.protocol === 'file:') {
+    document.getElementById('fileWarn').hidden = false;
+    document.getElementById('loading').hidden = true;
+  }
+</script>
+<script type="importmap">{ "imports": { "three": "./assets/three.module.min.js" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from './assets/OrbitControls.js';
+import { computeBoundsTree, acceleratedRaycast } from './assets/three-mesh-bvh.module.js';
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
+
+/* ================= helpers ================= */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = s => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+const today = () => new Date().toLocaleDateString('en-CA');
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
+const num = v => (v < 0 ? '−' + Math.abs(v) : String(v));
+const fmtXYZ = m => `(${m.map(num).join(', ')})`;
+const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+
+const PALETTE = ['#F4A48A','#7ECDB0','#A99BE3','#F2C75C','#EE90AA','#7FB6EA','#A3C27F','#F5B26E','#C79ADB','#6FC3C6','#8FA0EB','#E99A8F'];
+// Each ROI gets the least-used palette colour when first seen; stored in data.colors so it never changes.
+function colorFor(roi) {
+  const k = norm(roi);
+  data.colors ||= {};
+  if (!data.colors[k]) {
+    const used = new Map(PALETTE.map(c => [c, 0]));
+    for (const c of Object.values(data.colors)) used.set(c, (used.get(c) || 0) + 1);
+    data.colors[k] = PALETTE.reduce((best, c) => used.get(c) < used.get(best) ? c : best, PALETTE[0]);
+  }
+  return data.colors[k];
+}
+
+let toastT;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1800); }
+
+/* ================= BibTeX ================= */
+function parseBib(s) {
+  s = (s || '').trim();
+  const m = s.match(/^@\s*(\w+)\s*[{(]\s*([^,\s{}]*)\s*,/);
+  if (!m) return null;
+  const fields = {}; let i = m[0].length; const n = s.length;
+  const skipWs = () => { while (i < n && /\s/.test(s[i])) i++; };
+  const readPart = () => {
+    if (s[i] === '{') {
+      let d = 0; const st = i;
+      for (; i < n; i++) { if (s[i] === '{') d++; else if (s[i] === '}') { d--; if (d === 0) { i++; break; } } }
+      return s.slice(st + 1, i - 1);
+    }
+    if (s[i] === '"') {
+      const st = ++i; let d = 0;
+      for (; i < n; i++) { if (s[i] === '{') d++; else if (s[i] === '}') d--; else if (s[i] === '"' && d === 0) break; }
+      const v = s.slice(st, i); i++; return v;
+    }
+    const mm = s.slice(i).match(/^[^,}#\s]+/); const v = mm ? mm[0] : ''; i += v.length; return v;
+  };
+  while (i < n) {
+    while (i < n && /[\s,]/.test(s[i])) i++;
+    if (i >= n || s[i] === '}' || s[i] === ')') break;
+    const nm = s.slice(i).match(/^[A-Za-z][\w\-:.]*/); if (!nm) break;
+    i += nm[0].length; skipWs(); if (s[i] !== '=') break; i++; skipWs();
+    let val = readPart();
+    for (;;) { let j = i; while (j < n && /\s/.test(s[j])) j++; if (s[j] === '#') { i = j + 1; skipWs(); val += readPart(); } else break; }
+    fields[nm[0].toLowerCase()] = val.replace(/\s+/g, ' ').trim();
+  }
+  return { type: m[1].toLowerCase(), key: m[2], fields };
+}
+const ORDER = ['author','title','journal','booktitle','year','volume','number','pages','publisher','doi','url'];
+function formatBib(type, key, f) {
+  if (f.pages) f.pages = f.pages.replace(/\s*[–—]\s*/g, '--');   // classic BibTeX prefers ASCII page ranges
+  const ks = [...ORDER.filter(k => f[k]), ...Object.keys(f).filter(k => !ORDER.includes(k) && f[k])];
+  return `@${type}{${key},\n` + ks.map(k => `  ${k} = {${f[k]}}`).join(',\n') + '\n}';
+}
+const clean = s => String(s || '')
+  .replace(/\\[`'^"~=.uvHcrk]\s*\{?\\?(\w)\}?/g, '$1').replace(/\\([&%$#_])/g, '$1')
+  .replace(/[{}]/g, '').replace(/--/g, '–').replace(/\s+/g, ' ').trim();
+const ascii = s => clean(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z]/g, '');
+function lastNames(authors) {
+  return clean(authors).split(/\s+and\s+/i).filter(Boolean).map(a => a.includes(',') ? a.split(',')[0].trim() : a.trim().split(/\s+/).pop());
+}
+function shortCite(p) {
+  if (!p) return 'Unknown paper';
+  const ln = lastNames(p.authors);
+  const a = ln.length === 0 ? p.key : ln.length === 1 ? ln[0] : ln.length === 2 ? `${ln[0]} & ${ln[1]}` : `${ln[0]} et al.`;
+  return `${a} ${p.year || ''}`.trim();
+}
+function fullCite(p) {
+  const ln = lastNames(p.authors);
+  const au = ln.length ? ln.slice(0, 6).join(', ') + (ln.length > 6 ? ', …' : '') : '';
+  return `${esc(au)}${p.year ? ` (${esc(p.year)})` : ''}. ${esc(p.title)}${p.venue ? `. <i>${esc(p.venue)}</i>` : ''}.`;
+}
+function makeKey(f) {
+  const first = String(f.author || '').split(/\s+and\s+/i)[0] || '';
+  let last = first.includes(',') ? first.split(',')[0] : first.trim().split(/\s+/).pop();
+  last = ascii(last) || 'Paper';
+  last = last[0].toUpperCase() + last.slice(1);
+  const year = (String(f.year || '').match(/\d{4}/) || ['nd'])[0];
+  const base = last + year; let key = base, k = 0;
+  while (data.papers.some(p => p.key === key)) key = base + 'abcdefghijklmnopqrstuvwxyz'[k++];
+  return key;
+}
+const paperByKey = k => data.papers.find(p => p.key === k);
+
+function ingestPaper(bibtex, { doi = '', keepKey = false } = {}) {
+  const p = parseBib(bibtex);
+  if (!p) throw new Error("Couldn't read that BibTeX. It should start with @article{key, …");
+  const f = p.fields;
+  const d = String(doi || f.doi || '').replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').replace(/^doi:/i, '').trim();
+  const dup = data.papers.find(x =>
+    (d && x.doi && x.doi.toLowerCase() === d.toLowerCase()) ||
+    (f.title && x.title && norm(x.title) === norm(clean(f.title)) && String(x.year) === String(f.year || '').trim()));
+  if (dup) return { paper: dup, existed: true };
+  if (d) f.doi = d;
+  const canKeep = keepKey && p.key && !data.papers.some(x => x.key === p.key);
+  const key = canKeep ? p.key : makeKey(f);
+  const text = canKeep ? bibtex.trim() : formatBib(p.type, key, f);
+  const paper = { key, bibtex: text, doi: d, title: clean(f.title), year: String(f.year || '').trim(),
+                  authors: clean(f.author), venue: clean(f.journal || f.booktitle || f.publisher || ''), added: today() };
+  data.papers.push(paper);
+  return { paper, existed: false };
+}
+
+/* ================= data & saving ================= */
+let data = { version: 1, papers: [], nodes: [], colors: {} };
+let saveTimer = null;
+const normalizeData = d => ({ version: 1, papers: Array.isArray(d?.papers) ? d.papers : [], nodes: Array.isArray(d?.nodes) ? d.nodes : [],
+  colors: d?.colors && typeof d.colors === 'object' ? d.colors : {} });
+function assignColors() {   // in order of first appearance, so existing notes get distinct colours
+  for (const n of data.nodes) colorFor(n.roi);
+}
+
+function setStatus(s) {
+  const el = $('status'); el.className = 'status ' + s;
+  el.textContent = { saved: 'Saved', saving: 'Saving…', offline: 'Not saved' }[s] || s;
+  $('banner').hidden = s !== 'offline';
+}
+async function loadData() {
+  try {
+    const r = await fetch('/api/notes', { cache: 'no-store' });
+    if (!r.ok) throw new Error();
+    data = normalizeData(await r.json()); setStatus('saved');
+  } catch {
+    try { const ls = localStorage.getItem('brainnotes-mirror'); if (ls) data = normalizeData(JSON.parse(ls)); } catch {}
+    setStatus('offline');
+  }
+}
+function commit() {
+  try { localStorage.setItem('brainnotes-mirror', JSON.stringify(data)); } catch {}
+  setStatus('saving'); clearTimeout(saveTimer); saveTimer = setTimeout(push, 250);
+  renderAll();
+}
+async function push() {
+  try {
+    const r = await fetch('/api/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error);
+    setStatus('saved');
+  } catch { setStatus('offline'); clearTimeout(saveTimer); saveTimer = setTimeout(push, 5000); }
+}
+
+function groupBy(fn) {
+  const m = new Map();
+  for (const n of data.nodes) for (const name of fn(n)) {
+    const k = norm(name); if (!k) continue;
+    if (!m.has(k)) m.set(k, { key: k, name: name.trim(), nodes: [] });
+    const g = m.get(k); if (!g.nodes.includes(n)) g.nodes.push(n);
+  }
+  return m;
+}
+const roiGroups = () => groupBy(n => [n.roi]);
+const taskGroups = () => groupBy(n => n.tasks || []);
+const nodesForPaper = k => data.nodes.filter(n => (n.papers || []).includes(k));
+
+/* ================= selection state ================= */
+let sel = null;        // {type:'roi'|'task'|'paper', value, nodeId?}
+let tab = 'roi';
+let form = null;       // {id, tasks:[], papers:[]}
+
+function highlightIds() {
+  if (!sel) return null;
+  const ids = new Set();
+  for (const n of data.nodes) {
+    if (sel.type === 'roi' && norm(n.roi) === sel.value) ids.add(n.id);
+    if (sel.type === 'task' && (n.tasks || []).some(t => norm(t) === sel.value)) ids.add(n.id);
+    if (sel.type === 'paper' && (n.papers || []).includes(sel.value)) ids.add(n.id);
+  }
+  return ids;
+}
+function select(type, value, { nodeId = null, fly = true } = {}) {
+  sel = { type, value, nodeId }; tab = type;
+  renderAll();
+  if (fly) {
+    const nodes = nodeId ? data.nodes.filter(n => n.id === nodeId) : data.nodes.filter(n => highlightIds().has(n.id));
+    focusNodes(nodes);
+  }
+  $('detail').scrollIntoView({ block: 'nearest' });
+}
+function clearSel() { sel = null; renderAll(); }
+
+/* ================= 3D scene ================= */
+const stage = $('stage'), canvas = $('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, 1, 1, 4000);
+camera.up.set(0, 0, 1);                      // MNI: +x right, +y anterior, +z superior
+scene.add(camera);
+scene.add(new THREE.HemisphereLight(0xffffff, 0xd8d0c5, 1.25));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.6); keyLight.position.set(-0.5, 0.8, 1); camera.add(keyLight);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = 0.12; controls.minDistance = 90; controls.maxDistance = 1200;
+controls.rotateSpeed = 0.8;
+
+const center = new THREE.Vector3(0, -18, 5);
+const VIEW_DIST = 430;
+camera.position.copy(center).add(new THREE.Vector3(-1, 0.55, 0.45).normalize().multiplyScalar(VIEW_DIST));
+controls.target.copy(center);
+
+const brainMat = new THREE.ShaderMaterial({
+  uniforms: { uOpacity: { value: 0.14 }, uBase: { value: new THREE.Color('#ECE5DB') }, uRim: { value: new THREE.Color('#A89D91') } },
+  vertexShader: `varying vec3 vN; varying vec3 vV;
+    void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0); vN = normalize(normalMatrix*normal); vV = -mv.xyz; gl_Position = projectionMatrix*mv; }`,
+  fragmentShader: `uniform float uOpacity; uniform vec3 uBase; uniform vec3 uRim; varying vec3 vN; varying vec3 vV;
+    void main(){
+      vec3 n = normalize(vN); vec3 v = normalize(vV);
+      float ndv = clamp(abs(dot(n,v)),0.0,1.0);
+      vec3 L = normalize(vec3(-0.35,0.55,1.0));
+      float d = max(dot(n,L),0.0);
+      float s = pow(max(dot(n,normalize(L+v)),0.0),48.0)*0.12;
+      vec3 col = uBase*(0.40+0.62*d) + s;
+      float rim = pow(1.0-ndv,2.2);
+      col = mix(col, uRim, rim*0.55);
+      float a = clamp(uOpacity + (1.0-uOpacity)*rim*0.5, 0.0, 1.0);
+      gl_FragColor = vec4(col, a);
+      #include <colorspace_fragment>
+    }`,
+  transparent: true, depthWrite: false, side: THREE.FrontSide,
+});
+let brain = null;
+
+function setOpacity(v) {
+  brainMat.uniforms.uOpacity.value = v;
+  const solid = v >= 0.99;
+  brainMat.transparent = !solid; brainMat.depthWrite = solid;
+}
+
+async function loadMesh(url) {
+  const r = await fetch(url); if (!r.ok) throw new Error('mesh ' + r.status);
+  let buf = await r.arrayBuffer();
+  const b = new Uint8Array(buf, 0, 2);
+  if (b[0] === 0x1f && b[1] === 0x8b)
+    buf = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+  const dv = new DataView(buf);
+  const magic = dv.getUint16(0, true), nf = dv.getUint32(4, true), nv = dv.getUint32(8, true), nskip = dv.getUint32(12, true);
+  if (magic !== 0x5A4D) throw new Error('not an mz3 mesh');
+  let o = 16 + nskip;
+  const idx = new Uint32Array(buf.slice(o, o + nf * 12)); o += nf * 12;
+  const pos = new Float32Array(buf.slice(o, o + nv * 12));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere(); g.computeBoundsTree();
+  return g;
+}
+
+/* nodes */
+const sphereGeo = new THREE.SphereGeometry(3.8, 28, 18);
+const nodeGroup = new THREE.Group(); scene.add(nodeGroup);
+const nodeMeshes = new Map();
+let hoverId = null;
+
+function syncScene() {
+  const ids = new Set(data.nodes.map(n => n.id));
+  for (const [id, m] of nodeMeshes) if (!ids.has(id)) { nodeGroup.remove(m); m.material.dispose(); nodeMeshes.delete(id); }
+  for (const n of data.nodes) {
+    let m = nodeMeshes.get(n.id);
+    if (!m) {
+      m = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0 }));
+      m.userData.id = n.id; m.userData.s = 0.01; nodeGroup.add(m); nodeMeshes.set(n.id, m);
+    }
+    m.position.set(n.mni[0], n.mni[1], n.mni[2]);
+    const c = new THREE.Color(colorFor(n.roi));
+    m.material.color.copy(c); m.material.emissive.copy(c); m.material.emissiveIntensity = 0.22;
+  }
+  const hl = highlightIds();
+  for (const [id, m] of nodeMeshes) {
+    const on = !hl || hl.has(id), dim = !!hl && !on;
+    if (m.material.transparent !== dim) { m.material.transparent = dim; m.material.needsUpdate = true; }
+    m.material.opacity = dim ? 0.16 : 1; m.material.depthWrite = !dim;
+    m.renderOrder = dim ? 1 : 0;
+    m.userData.base = sel?.nodeId === id ? 1.75 : (hl && on ? 1.35 : 1);
+    m.visible = !(form && form.id === id);
+  }
+}
+
+/* ghost marker for the add form */
+const ghost = new THREE.Group();
+ghost.add(new THREE.Mesh(new THREE.SphereGeometry(3.4, 28, 18), new THREE.MeshStandardMaterial({ color: '#3A3530', roughness: 0.4 })));
+{
+  const L = 16, pts = [];
+  for (const ax of [[1,0,0],[0,1,0],[0,0,1]]) pts.push(new THREE.Vector3(...ax).multiplyScalar(-L), new THREE.Vector3(...ax).multiplyScalar(L));
+  ghost.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({ color: '#3A3530', transparent: true, opacity: 0.45, depthTest: false })));
+}
+ghost.visible = false; scene.add(ghost);
+function readFormXYZ() { const v = ['fx','fy','fz'].map(id => parseFloat($(id).value)); return v.some(isNaN) ? null : v; }
+function updateGhost() { const v = form && readFormXYZ(); ghost.visible = !!v; if (v) ghost.position.set(...v); }
+
+/* camera animation */
+let fly = null;
+const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+function flyTo(target, pos, ms = 700) {
+  fly = { t0: performance.now(), ms, fT: controls.target.clone(), tT: target, fP: camera.position.clone(), tP: pos };
+}
+const VIEWS = { L: [-1,0,0], R: [1,0,0], A: [0,1,0], P: [0,-1,0], S: [0,-0.0001,1], I: [0,-0.0001,-1] };
+function setView(k) {
+  const d = new THREE.Vector3(...VIEWS[k]).normalize();
+  flyTo(center.clone(), center.clone().addScaledVector(d, VIEW_DIST));
+}
+function focusNodes(nodes) {
+  if (!nodes.length) return;
+  const c = new THREE.Vector3();
+  nodes.forEach(n => c.add(new THREE.Vector3(...n.mni))); c.divideScalar(nodes.length);
+  const dir = c.clone().sub(center); dir.z *= 0.4;
+  if (Math.abs(c.x) < 12 || dir.length() < 18) dir.copy(camera.position).sub(controls.target);
+  dir.normalize(); dir.z += 0.25; dir.normalize();
+  const tgt = center.clone().lerp(c, 0.6);
+  flyTo(tgt, tgt.clone().addScaledVector(dir, nodes.length > 1 ? VIEW_DIST * 0.95 : VIEW_DIST * 0.8));
+}
+
+/* picking */
+const ray = new THREE.Raycaster(); ray.firstHitOnly = true;
+const ndc = new THREE.Vector2();
+function pick(ev) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const nh = ray.intersectObjects(nodeGroup.children.filter(m => m.visible), false)[0];
+  const bh = brain ? ray.intersectObject(brain, false)[0] : null;
+  return { node: nh ? data.nodes.find(n => n.id === nh.object.userData.id) : null, point: bh ? bh.point : null };
+}
+const rnd = p => [Math.round(p.x), Math.round(p.y), Math.round(p.z)];
+
+let down = null, lastMove = null;
+canvas.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('pointerup', e => {
+  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) { down = null; return; }
+  down = null;
+  const h = pick(e);
+  if (form) {
+    const v = h.node ? h.node.mni : h.point ? rnd(h.point) : null;
+    if (v) { $('fx').value = v[0]; $('fy').value = v[1]; $('fz').value = v[2]; updateGhost(); }
+    return;
+  }
+  if (h.node) select('roi', norm(h.node.roi), { nodeId: h.node.id, fly: false });
+  else if (!h.point) clearSel();
+});
+canvas.addEventListener('dblclick', e => {
+  if (form) return;
+  const h = pick(e);
+  if (h.point && !h.node) openForm(null, { mni: rnd(h.point) });
+});
+canvas.addEventListener('pointermove', e => { lastMove = e; });
+canvas.addEventListener('pointerleave', () => { lastMove = null; hoverId = null; $('tip').hidden = true; $('rxyz').textContent = '—'; stage.classList.remove('overnode'); });
+
+function doHover() {
+  if (!lastMove) return;
+  const e = lastMove; lastMove = null;
+  if (e.buttons) { $('tip').hidden = true; return; }
+  const h = pick(e);
+  const tip = $('tip');
+  hoverId = h.node ? h.node.id : null;
+  stage.classList.toggle('overnode', !!h.node && !form);
+  if (h.node) {
+    const n = h.node, r = stage.getBoundingClientRect();
+    tip.innerHTML = `<div class="t"><span class="dot" style="background:${colorFor(n.roi)}"></span>${esc(n.roi)}</div>
+      <div class="s">${fmtXYZ(n.mni)}</div>${n.tasks?.length ? `<div>${esc(n.tasks.slice(0, 3).join(' · '))}${n.tasks.length > 3 ? ' …' : ''}</div>` : ''}`;
+    tip.style.left = (e.clientX - r.left) + 'px'; tip.style.top = (e.clientY - r.top) + 'px'; tip.hidden = false;
+    $('rxyz').textContent = fmtXYZ(n.mni);
+  } else {
+    tip.hidden = true;
+    $('rxyz').textContent = h.point ? fmtXYZ(rnd(h.point)) + (form ? '  · click to place' : '') : '—';
+  }
+}
+
+/* floating labels for highlighted nodes */
+const labelEls = new Map();
+const tmpV = new THREE.Vector3();
+function updateLabels() {
+  const hl = highlightIds();
+  const show = hl && hl.size <= 30 ? data.nodes.filter(n => hl.has(n.id)) : [];
+  const keep = new Set();
+  const r = stage.getBoundingClientRect();
+  for (const n of show) {
+    keep.add(n.id);
+    let el = labelEls.get(n.id);
+    if (!el) { el = document.createElement('div'); el.className = 'label'; $('labels').appendChild(el); labelEls.set(n.id, el); }
+    const txt = sel.type === 'roi'
+      ? ((n.papers || []).map(k => shortCite(paperByKey(k))).join(', ') || n.roi)
+      : n.roi;
+    const html = `<i style="background:${colorFor(n.roi)}"></i>${esc(txt)}`;
+    if (el._h !== html) { el.innerHTML = html; el._h = html; }
+    tmpV.set(...n.mni).project(camera);
+    el.style.left = ((tmpV.x + 1) / 2 * r.width) + 'px';
+    el.style.top = ((1 - tmpV.y) / 2 * r.height) + 'px';
+    el.style.display = tmpV.z < 1 ? '' : 'none';
+  }
+  for (const [id, el] of labelEls) if (!keep.has(id)) { el.remove(); labelEls.delete(id); }
+}
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / Math.max(h, 1); camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage);
+
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (fly) {
+    const t = Math.min(1, (now - fly.t0) / fly.ms), k = ease(t);
+    controls.target.lerpVectors(fly.fT, fly.tT, k); camera.position.lerpVectors(fly.fP, fly.tP, k);
+    if (t >= 1) fly = null;
+  }
+  controls.update();
+  doHover();
+  const pulse = 1 + 0.06 * Math.sin(now / 260);
+  for (const [id, m] of nodeMeshes) {
+    let s = (m.userData.base || 1) * (hoverId === id ? 1.25 : 1);
+    if (sel?.nodeId === id) s *= pulse;
+    m.userData.s += (s - m.userData.s) * 0.2; m.scale.setScalar(m.userData.s);
+  }
+  updateLabels();
+  renderer.render(scene, camera);
+}
+
+/* ================= panel rendering ================= */
+function renderAll() {
+  if (sel) {   // drop selection if its target disappeared
+    const ok = sel.type === 'paper' ? !!paperByKey(sel.value) : highlightIds().size > 0;
+    if (!ok) sel = null; else if (sel.nodeId && !data.nodes.some(n => n.id === sel.nodeId)) sel.nodeId = null;
+  }
+  renderTabs(); renderList(); renderDetail(); renderDatalists(); syncScene();
+  if (form) { renderFormChips(); renderPaperSelect(); }
+}
+
+function listItems() {
+  const q = norm($('search').value);
+  const hit = s => !q || norm(s).includes(q);
+  const rois = [...roiGroups().values()].filter(g => hit(g.name)).sort(byName);
+  const tasks = [...taskGroups().values()].filter(g => hit(g.name)).sort(byName);
+  const papers = data.papers.map(p => ({ p, name: shortCite(p) }))
+    .filter(x => hit(`${x.name} ${x.p.title} ${x.p.authors} ${x.p.key} ${x.p.venue}`)).sort(byName);
+  return { rois, tasks, papers };
+}
+function renderTabs() {
+  const it = listItems();
+  const counts = { roi: it.rois.length, task: it.tasks.length, paper: it.papers.length };
+  for (const b of $('tabs').querySelectorAll('.tab')) {
+    b.classList.toggle('active', b.dataset.tab === tab);
+    b.querySelector('span').textContent = counts[b.dataset.tab] || '';
+  }
+}
+function renderList() {
+  const it = listItems(), q = $('search').value.trim();
+  let html = '';
+  if (tab === 'roi') {
+    html = it.rois.map(g => `<div class="item ${sel?.type === 'roi' && sel.value === g.key ? 'active' : ''}" data-act="roi" data-key="${esc(g.key)}">
+      <span class="dot" style="background:${colorFor(g.name)}"></span><span class="name">${esc(g.name)}</span>
+      <span class="count">${g.nodes.length > 1 ? g.nodes.length + ' nodes' : ''}</span></div>`).join('');
+  } else if (tab === 'task') {
+    html = it.tasks.map(g => {
+      const rois = [...new Set(g.nodes.map(n => norm(n.roi)))];
+      const cols = [...new Set(g.nodes.map(n => colorFor(n.roi)))].slice(0, 4);
+      return `<div class="item ${sel?.type === 'task' && sel.value === g.key ? 'active' : ''}" data-act="task" data-key="${esc(g.key)}">
+        <span class="stack">${cols.map(c => `<span class="dot" style="background:${c}"></span>`).join('')}</span>
+        <span class="name">${esc(g.name)}</span><span class="count">${rois.length} ROI${rois.length > 1 ? 's' : ''}</span></div>`;
+    }).join('');
+  } else {
+    html = it.papers.map(({ p, name }) => {
+      const n = nodesForPaper(p.key).length;
+      return `<div class="item ${sel?.type === 'paper' && sel.value === p.key ? 'active' : ''}" data-act="paper" data-key="${esc(p.key)}">
+        <span class="two"><span class="name">${esc(name)}</span><span class="sub">${esc(p.title)}</span></span>
+        <span class="count">${n || ''}</span></div>`;
+    }).join('');
+  }
+  const noun = { roi: 'ROIs', task: 'tasks', paper: 'papers' }[tab];
+  $('list').innerHTML = html || `<div class="empty">${q ? `No ${noun} match “${esc(q)}”.` : `No ${noun} yet.`}</div>`;
+}
+
+function taskChips(tasks) {
+  return (tasks || []).length ? `<div class="chips">${tasks.map(t => `<button class="chip" data-act="task" data-key="${esc(norm(t))}">${esc(t)}</button>`).join('')}</div>` : '<span class="muted">-</span>';
+}
+function paperLines(keys) {
+  if (!(keys || []).length) return '<span class="muted">No paper linked</span>';
+  return keys.map(k => {
+    const p = paperByKey(k); if (!p) return '';
+    return `<div class="paper"><button class="plink" data-act="paper" data-key="${esc(k)}">${esc(shortCite(p))}</button>
+      ${p.doi ? `<a class="ext" href="https://doi.org/${esc(p.doi)}" target="_blank" rel="noopener">doi ↗</a>` : ''}
+      <div class="ttl">${esc(p.title)}</div></div>`;
+  }).join('');
+}
+function nodeCard(n, active) {
+  return `<div class="ncard ${active ? 'active' : ''}">
+    <div class="nrow"><span class="mono">MNI ${fmtXYZ(n.mni)}</span><span class="spacer"></span>
+      <button class="btn ghost sm" data-act="focus" data-id="${n.id}">Focus</button>
+      <button class="btn ghost sm" data-act="edit" data-id="${n.id}">Edit</button>
+      <button class="btn ghost sm danger" data-act="del" data-id="${n.id}">Delete</button></div>
+    <div class="field"><div class="flabel">Implicated in</div>${taskChips(n.tasks)}</div>
+    <div class="field"><div class="flabel">Paper</div>${paperLines(n.papers)}</div>
+    ${n.notes ? `<div class="field"><div class="flabel">Notes</div><div class="notes">${esc(n.notes)}</div></div>` : ''}
+  </div>`;
+}
+let editingBib = false;
+function renderDetail() {
+  const el = $('detail');
+  if (!sel) {
+    const rois = roiGroups().size, tasks = taskGroups().size;
+    if (!data.nodes.length && !data.papers.length) {
+      el.innerHTML = `<div class="kicker">Welcome</div><p style="margin:4px 0 0;color:var(--ink2)">Your brain is empty. Click <b>+ Add node</b>, or double-click the brain, to place your first ROI.
+        Each node gets an ROI name, what it's implicated in, and the paper it came from. Papers go straight into <b>BrainNotes.bib</b>.</p>`;
+      return;
+    }
+    const recent = [...data.nodes].reverse().slice(0, 6);
+    el.innerHTML = `<div class="stats">
+        <div class="stat"><b>${data.nodes.length}</b><span>nodes</span></div><div class="stat"><b>${rois}</b><span>ROIs</span></div>
+        <div class="stat"><b>${tasks}</b><span>tasks</span></div><div class="stat"><b>${data.papers.length}</b><span>papers</span></div></div>
+      <div class="flabel">Recently added</div>
+      ${recent.map(n => `<div class="item" data-act="roi" data-key="${esc(norm(n.roi))}" data-id="${n.id}" style="margin:0 -10px">
+        <span class="dot" style="background:${colorFor(n.roi)}"></span><span class="two"><span class="name">${esc(n.roi)}</span>
+        <span class="sub">${esc((n.tasks || []).join(' · ') || fmtXYZ(n.mni))}</span></span></div>`).join('')}`;
+    return;
+  }
+  if (sel.type === 'roi') {
+    const g = roiGroups().get(sel.value); if (!g) { el.innerHTML = ''; return; }
+    const nodes = [...g.nodes].sort((a, b) => (b.id === sel.nodeId) - (a.id === sel.nodeId));
+    const tasks = new Set(nodes.flatMap(n => (n.tasks || []).map(norm))), papers = new Set(nodes.flatMap(n => n.papers || []));
+    el.innerHTML = `<div class="kicker">Region</div>
+      <div class="dhead"><span class="dot big" style="background:${colorFor(g.name)}"></span><h3>${esc(g.name)}</h3><button class="btn ghost sm" data-act="clear">Clear</button></div>
+      <div class="meta">${nodes.length} node${nodes.length > 1 ? 's' : ''} · ${tasks.size} task${tasks.size !== 1 ? 's' : ''} · ${papers.size} paper${papers.size !== 1 ? 's' : ''}</div>
+      ${nodes.map(n => nodeCard(n, n.id === sel.nodeId && nodes.length > 1)).join('')}
+      <div class="row" style="margin-top:12px"><button class="btn sm" data-act="addroi" data-key="${esc(g.name)}">+ Add another node for this ROI</button></div>`;
+  } else if (sel.type === 'task') {
+    const g = taskGroups().get(sel.value); if (!g) { el.innerHTML = ''; return; }
+    const byRoi = new Map();
+    for (const n of g.nodes) { const k = norm(n.roi); if (!byRoi.has(k)) byRoi.set(k, { name: n.roi, nodes: [] }); byRoi.get(k).nodes.push(n); }
+    const papers = new Set(g.nodes.flatMap(n => n.papers || []));
+    el.innerHTML = `<div class="kicker">Implicated in</div>
+      <div class="dhead"><h3>${esc(g.name)}</h3><button class="btn ghost sm" data-act="clear">Clear</button></div>
+      <div class="meta">${byRoi.size} ROI${byRoi.size > 1 ? 's' : ''} · ${papers.size} paper${papers.size !== 1 ? 's' : ''}</div>
+      ${[...byRoi.values()].sort(byName).map(r => `<div class="roiline"><span class="dot" style="background:${colorFor(r.name)}"></span><div class="body">
+        <button class="plink" data-act="roi" data-key="${esc(norm(r.name))}">${esc(r.name)}</button>
+        ${r.nodes.map(n => `<div class="mono" style="margin-top:4px">${fmtXYZ(n.mni)} <span class="muted">${(n.papers || []).map(k => esc(shortCite(paperByKey(k)))).join(', ')}</span></div>`).join('')}
+      </div></div>`).join('')}`;
+  } else {
+    const p = paperByKey(sel.value); if (!p) { el.innerHTML = ''; return; }
+    const nodes = nodesForPaper(p.key);
+    el.innerHTML = `<div class="kicker">Paper · ${esc(p.key)}</div>
+      <div class="dhead"><h3>${esc(shortCite(p))}</h3><button class="btn ghost sm" data-act="clear">Clear</button></div>
+      <div class="cite">${fullCite(p)} ${p.doi ? `<a class="ext" href="https://doi.org/${esc(p.doi)}" target="_blank" rel="noopener">doi ↗</a>` : ''}</div>
+      <div class="row"><button class="btn sm" data-act="copybib">Copy BibTeX</button><button class="btn sm" data-act="editbib">${editingBib ? 'Hide BibTeX' : 'Edit BibTeX'}</button>
+        <span class="spacer"></span><button class="btn ghost sm danger" data-act="delpaper">Delete paper</button></div>
+      ${editingBib ? `<div class="field"><textarea id="bibEdit" rows="9" style="font:12px/1.5 Consolas,ui-monospace,monospace">${esc(p.bibtex)}</textarea>
+        <div id="bibErr" class="err" hidden></div><div class="row end" style="margin-top:6px"><button class="btn primary sm" data-act="savebib">Save BibTeX</button></div></div>` : ''}
+      <div class="field" style="margin-top:16px"><div class="flabel">ROIs from this paper (${nodes.length})</div>
+      ${nodes.length ? nodes.map(n => `<div class="roiline"><span class="dot" style="background:${colorFor(n.roi)}"></span><div class="body">
+          <button class="plink" data-act="roi" data-key="${esc(norm(n.roi))}" data-id="${n.id}">${esc(n.roi)}</button> <span class="mono">${fmtXYZ(n.mni)}</span>
+          <div style="margin-top:6px">${taskChips(n.tasks)}</div></div></div>`).join('') : '<div class="muted">No nodes linked yet.</div>'}</div>`;
+  }
+}
+function renderDatalists() {
+  $('roiOptions').innerHTML = [...roiGroups().values()].sort(byName).map(g => `<option value="${esc(g.name)}">`).join('');
+  $('taskOptions').innerHTML = [...taskGroups().values()].sort(byName).map(g => `<option value="${esc(g.name)}">`).join('');
+}
+
+/* panel events */
+function onAct(e) {
+  const t = e.target.closest('[data-act]'); if (!t) return;
+  const { act, key, id } = t.dataset;
+  if (e.target.closest('a')) return;
+  if (act === 'roi') select('roi', key, { nodeId: id || null });
+  else if (act === 'task') select('task', key);
+  else if (act === 'paper') { editingBib = false; select('paper', key); }
+  else if (act === 'clear') clearSel();
+  else if (act === 'focus') { const n = data.nodes.find(x => x.id === id); sel.nodeId = id; renderAll(); focusNodes([n]); }
+  else if (act === 'edit') openForm(data.nodes.find(x => x.id === id));
+  else if (act === 'del') deleteNode(id);
+  else if (act === 'addroi') openForm(null, { roi: key });
+  else if (act === 'copybib') { navigator.clipboard.writeText(paperByKey(sel.value).bibtex).then(() => toast('BibTeX copied')); }
+  else if (act === 'editbib') { editingBib = !editingBib; renderDetail(); }
+  else if (act === 'savebib') saveBibEdit();
+  else if (act === 'delpaper') deletePaper(sel.value);
+}
+$('list').addEventListener('click', onAct);
+$('detail').addEventListener('click', onAct);
+$('tabs').addEventListener('click', e => { const b = e.target.closest('.tab'); if (!b) return; tab = b.dataset.tab; renderTabs(); renderList(); });
+$('search').addEventListener('input', () => { renderTabs(); renderList(); });
+$('search').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  let first = $('list').querySelector('[data-act]');
+  if (!first) {   // jump to whichever tab has matches
+    const it = listItems(); const alt = it.rois.length ? 'roi' : it.tasks.length ? 'task' : it.papers.length ? 'paper' : null;
+    if (alt) { tab = alt; renderTabs(); renderList(); first = $('list').querySelector('[data-act]'); }
+  }
+  first?.click();
+});
+document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+$('opacity').addEventListener('input', e => setOpacity(parseFloat(e.target.value)));
+$('exportBtn').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  a.download = `BrainNotes-backup-${today()}.json`; a.click(); URL.revokeObjectURL(a.href);
+});
+
+function deleteNode(id) {
+  const n = data.nodes.find(x => x.id === id); if (!n) return;
+  if (!confirm(`Delete the ${n.roi} node at ${fmtXYZ(n.mni)}?`)) return;
+  data.nodes = data.nodes.filter(x => x.id !== id);
+  for (const k of n.papers || []) {
+    const p = paperByKey(k);
+    if (p && !nodesForPaper(k).length &&
+        confirm(`${shortCite(p)} is no longer linked to any node.\n\nOK = remove it from your library and BrainNotes.bib\nCancel = keep it`))
+      data.papers = data.papers.filter(x => x.key !== k);
+  }
+  if (form?.id === id) closeForm();
+  commit(); toast('Node deleted');
+}
+function deletePaper(key) {
+  const p = paperByKey(key); const n = nodesForPaper(key).length;
+  if (!confirm(`Remove ${shortCite(p)} from your library and BrainNotes.bib?` + (n ? `\n\nIt will be unlinked from ${n} node${n > 1 ? 's' : ''} (the nodes stay).` : ''))) return;
+  data.papers = data.papers.filter(x => x.key !== key);
+  for (const nd of data.nodes) nd.papers = (nd.papers || []).filter(k => k !== key);
+  sel = null; commit(); toast('Paper removed');
+}
+function saveBibEdit() {
+  const p = paperByKey(sel.value), txt = $('bibEdit').value, err = $('bibErr');
+  const parsed = parseBib(txt);
+  if (!parsed || !parsed.key) { err.textContent = "Couldn't read that BibTeX entry."; err.hidden = false; return; }
+  if (parsed.key !== p.key && paperByKey(parsed.key)) { err.textContent = `Another paper already uses the key “${parsed.key}”.`; err.hidden = false; return; }
+  const f = parsed.fields, old = p.key;
+  Object.assign(p, { key: parsed.key, bibtex: txt.trim(), doi: (f.doi || '').trim(), title: clean(f.title), year: String(f.year || '').trim(),
+    authors: clean(f.author), venue: clean(f.journal || f.booktitle || f.publisher || '') });
+  if (old !== p.key) for (const n of data.nodes) n.papers = (n.papers || []).map(k => k === old ? p.key : k);
+  sel.value = p.key; editingBib = false; commit(); toast('BibTeX updated');
+}
+
+/* ================= add / edit form ================= */
+function openForm(node = null, preset = {}) {
+  form = { id: node?.id || null, tasks: [...(node?.tasks || preset.tasks || [])], papers: [...(node?.papers || preset.papers || [])] };
+  const m = node?.mni || preset.mni || ['', '', ''];
+  $('fx').value = m[0]; $('fy').value = m[1]; $('fz').value = m[2];
+  $('froi').value = node?.roi || preset.roi || '';
+  $('fnotes').value = node?.notes || ''; $('ftask').value = '';
+  $('formTitle').textContent = node ? 'Edit node' : 'New node';
+  $('formDelete').hidden = !node; $('formErr').hidden = true;
+  $('investigate').hidden = true; $('formView').hidden = false;
+  stage.classList.add('adding'); $('addBtn').textContent = 'Close form';
+  closeNewPaper(); renderFormChips(); renderPaperSelect(); syncScene(); updateGhost();
+  setTimeout(() => (node || preset.mni ? $('froi') : $('fx')).focus(), 30);
+}
+function closeForm() {
+  form = null; ghost.visible = false;
+  $('formView').hidden = true; $('investigate').hidden = false;
+  stage.classList.remove('adding'); $('addBtn').textContent = '+ Add node';
+  syncScene();
+}
+function canonical(name, groups) { const g = groups.get(norm(name)); return g ? g.name : name.trim(); }
+function addTask(raw) {
+  for (const part of String(raw).split(/[,;]/)) {
+    const t = part.trim(); if (!t) continue;
+    const c = canonical(t, taskGroups());
+    if (!form.tasks.some(x => norm(x) === norm(c))) form.tasks.push(c);
+  }
+  $('ftask').value = ''; renderFormChips();
+}
+function renderFormChips() {
+  const box = $('taskBox'), input = $('ftask');
+  box.querySelectorAll('.chip').forEach(c => c.remove());
+  form.tasks.forEach((t, i) => {
+    const c = document.createElement('span'); c.className = 'chip';
+    c.innerHTML = `${esc(t)}<button class="x" title="Remove" data-i="${i}">×</button>`;
+    box.insertBefore(c, input);
+  });
+  $('paperChips').innerHTML = form.papers.length
+    ? form.papers.map((k, i) => `<span class="chip">${esc(shortCite(paperByKey(k)))}<button class="x" title="Remove" data-pi="${i}">×</button></span>`).join('')
+    : '';
+}
+function renderPaperSelect() {
+  const opts = data.papers.filter(p => !form.papers.includes(p.key)).map(p => ({ p, name: shortCite(p) })).sort(byName);
+  $('paperSelect').innerHTML = `<option value="">${form.papers.length ? 'Link another paper…' : 'Choose a paper…'}</option>
+    ${opts.map(({ p, name }) => `<option value="${esc(p.key)}">${esc(name)}: ${esc(p.title.slice(0, 70))}${p.title.length > 70 ? '…' : ''}</option>`).join('')}
+    <option value="__new">+ New paper (DOI, BibTeX or manual)…</option>`;
+}
+$('taskBox').addEventListener('click', e => {
+  const x = e.target.closest('.x'); if (x) { form.tasks.splice(+x.dataset.i, 1); renderFormChips(); }
+  else $('ftask').focus();
+});
+$('paperChips').addEventListener('click', e => {
+  const x = e.target.closest('.x'); if (x) { form.papers.splice(+x.dataset.pi, 1); renderFormChips(); renderPaperSelect(); }
+});
+$('ftask').addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ',') && $('ftask').value.trim()) { e.preventDefault(); addTask($('ftask').value); }
+  else if (e.key === 'Enter') e.preventDefault();
+  else if (e.key === 'Backspace' && !$('ftask').value && form.tasks.length) { form.tasks.pop(); renderFormChips(); }
+});
+$('ftask').addEventListener('input', e => { if (e.inputType === 'insertReplacementText' || e.inputType === undefined) addTask($('ftask').value); });
+$('paperSelect').addEventListener('change', e => {
+  const v = e.target.value;
+  if (v === '__new') openNewPaper();
+  else if (v && !form.papers.includes(v)) { form.papers.push(v); renderFormChips(); renderPaperSelect(); }
+  e.target.value = '';
+});
+['fx','fy','fz'].forEach(id => $(id).addEventListener('input', updateGhost));
+document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeForm));
+$('addBtn').addEventListener('click', () => form ? closeForm() : openForm());
+$('formDelete').addEventListener('click', () => deleteNode(form.id));
+$('formSave').addEventListener('click', saveForm);
+
+function saveForm() {
+  if ($('ftask').value.trim()) addTask($('ftask').value);
+  const err = $('formErr'); const fail = m => { err.textContent = m; err.hidden = false; };
+  const mni = readFormXYZ();
+  if (!mni) return fail('Add x, y and z coordinates (click the brain or type them).');
+  if (mni.some(v => Math.abs(v) > 120)) return fail('Those coordinates are outside the brain. MNI values are in mm, roughly −90…90.');
+  const roiRaw = $('froi').value.trim(); if (!roiRaw) return fail('Give the ROI a name.');
+  const roi = canonical(roiRaw, roiGroups());
+  const old = form.id ? data.nodes.find(n => n.id === form.id) : null;
+  const rec = { id: form.id || uid(), roi, mni: mni.map(v => Math.round(v * 10) / 10), tasks: form.tasks, papers: form.papers,
+                notes: $('fnotes').value.trim(), added: old?.added || today() };
+  if (old) Object.assign(old, rec); else data.nodes.push(rec);
+  closeForm();
+  sel = { type: 'roi', value: norm(roi), nodeId: rec.id }; tab = 'roi';
+  commit(); toast(old ? 'Node updated' : 'Node added');
+}
+
+/* new paper sub-form */
+let npMode = 'doi', npPending = null;
+function openNewPaper() { $('newPaper').hidden = false; setNpMode('doi'); $('npPreview').innerHTML = ''; npPending = null; $('npDoi').focus(); }
+function closeNewPaper() {
+  $('newPaper').hidden = true; npPending = null; $('npPreview').innerHTML = '';
+  ['npDoi','npBib','npAuthor','npTitle','npYear','npJournal','npDoiManual'].forEach(id => $(id).value = '');
+}
+function setNpMode(m) {
+  npMode = m; $('npPreview').innerHTML = '';
+  $('npTabs').querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.np === m));
+  document.querySelectorAll('[data-npv]').forEach(v => v.hidden = v.dataset.npv !== m);
+  $('npAdd').textContent = m === 'doi' && !npPending ? 'Look up & add' : 'Add paper';
+}
+$('npTabs').addEventListener('click', e => { const t = e.target.closest('.tab'); if (t) setNpMode(t.dataset.np); });
+$('npCancel').addEventListener('click', closeNewPaper);
+const npMsg = (html, bad) => { $('npPreview').innerHTML = bad ? `<div class="err">${html}</div>` : html; };
+async function lookupDoi() {
+  const d = $('npDoi').value.trim(); if (!d) { npMsg('Paste a DOI first.', true); return null; }
+  npMsg('<span class="muted">Looking up…</span>');
+  try {
+    const r = await fetch('/api/doi?d=' + encodeURIComponent(d)); const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Lookup failed');
+    const f = parseBib(j.bibtex)?.fields || {};
+    npPending = j;
+    npMsg(`<div class="cite" style="margin:0">${fullCite({ authors: clean(f.author), year: f.year, title: clean(f.title), venue: clean(f.journal || f.booktitle || '') })}</div>`);
+    $('npAdd').textContent = 'Add paper';
+    return j;
+  } catch (e) { npPending = null; npMsg(esc(e.message || 'Lookup failed. Are you online?'), true); return null; }
+}
+$('npDoiGo').addEventListener('click', lookupDoi);
+$('npDoi').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); lookupDoi(); } });
+$('npDoi').addEventListener('input', () => { npPending = null; $('npAdd').textContent = 'Look up & add'; });
+$('npAdd').addEventListener('click', async () => {
+  try {
+    let res;
+    if (npMode === 'doi') {
+      const j = npPending || await lookupDoi(); if (!j) return;
+      res = ingestPaper(j.bibtex, { doi: j.doi });
+    } else if (npMode === 'bib') {
+      res = ingestPaper($('npBib').value, { keepKey: true });
+    } else {
+      const author = $('npAuthor').value.trim(), title = $('npTitle').value.trim(), year = $('npYear').value.trim();
+      if (!author || !title || !year) { npMsg('Authors, title and year are needed.', true); return; }
+      const f = { author, title, journal: $('npJournal').value.trim(), year, doi: $('npDoiManual').value.trim() };
+      res = ingestPaper(formatBib('article', 'tmp', f), { doi: f.doi });
+    }
+    if (!form.papers.includes(res.paper.key)) form.papers.push(res.paper.key);
+    closeNewPaper();
+    commit();   // the paper goes into the .bib right away
+    toast(res.existed ? `${shortCite(res.paper)} is already in your library, linked` : `Added ${shortCite(res.paper)} to BrainNotes.bib`);
+  } catch (e) { npMsg(esc(e.message), true); }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (form && !$('newPaper').hidden) closeNewPaper();
+  else if (form) closeForm();
+  else if (sel) clearSel();
+});
+
+/* ================= boot ================= */
+resize();
+requestAnimationFrame(loop);
+await loadData();
+assignColors();
+renderAll();
+try {
+  const g = await loadMesh('assets/mni152_2009.mz3');
+  brain = new THREE.Mesh(g, brainMat); brain.renderOrder = 2; scene.add(brain);
+  g.boundingBox.getCenter(center); controls.target.copy(center);
+  camera.position.copy(center).add(new THREE.Vector3(-1, 0.55, 0.45).normalize().multiplyScalar(VIEW_DIST));
+  $('loading').hidden = true;
+} catch (e) {
+  $('loading').textContent = "Couldn't load the brain mesh (" + e.message + '). Start BrainNotes with BrainNotes.bat (Windows) or BrainNotes.command (Mac).';
+}
+</script>
+</body>
+</html>

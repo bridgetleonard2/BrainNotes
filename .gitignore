@@ -1,0 +1,9 @@
+# Personal settings and notes stay out of the tool repo
+config.json
+notes/
+notes.json
+notes.backup.json
+BrainNotes.bib
+*.tmp
+__pycache__/
+.DS_Store
