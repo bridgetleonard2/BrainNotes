@@ -34,7 +34,8 @@ The brain opens in your browser at `http://localhost:8765`. Keep the small termi
 
 ## Using it
 
-- **Add a node:** click **+ Add node**, then either click the brain or type x, y, z. You can also double-click the brain to start a node at that spot.
+- **Add a node:** click **+ Add node**, then either click the brain or type coordinates. You can also double-click the brain to start a node at that spot.
+  - Each node has a **Left** and a **Right** coordinate row. Fill one side or both; a node with both shows a sphere in each hemisphere. Clicking the brain fills whichever side you clicked.
   - Clicks land on the cortical surface. For deep structures like the amygdala, type or nudge the coordinates.
 - **Add a paper** from the node form, in one of three ways:
   - **DOI lookup:** fetches the BibTeX from doi.org (needs internet).
@@ -50,6 +51,8 @@ The brain opens in your browser at `http://localhost:8765`. Keep the small termi
   - **Export** downloads a backup of your notes.
 
 Each ROI name gets its own pastel colour, and that colour stays the same over time. If several papers report different peaks for the same region, each peak is its own node, grouped under the shared ROI name.
+
+Advanced: `server.py --notes DIR --port N` runs BrainNotes on a different notes folder or port, for example to keep a separate notebook.
 
 ## Your notes folder
 

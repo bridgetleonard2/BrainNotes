@@ -138,6 +138,12 @@
   .lbl{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
   .xyz{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .xyz label{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12.5px}
+  .xyz.side{grid-template-columns:40px repeat(3,1fr) 18px;align-items:center;margin-bottom:8px}
+  .sidelbl{font-size:12.5px;color:var(--ink2)}
+  .clr{border:0;background:none;padding:0;color:var(--faint);cursor:pointer;font-size:16px;line-height:1}
+  .clr:hover{color:var(--ink)}
+  .lblnote{text-transform:none;letter-spacing:0;color:var(--faint);margin-left:4px}
+  .mono .side{display:inline-block;width:42px;color:var(--muted);font-size:12px}
   .chipbox{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 6px;border:1px solid var(--rule);border-radius:9px;background:var(--card)}
   .chipbox input{border:0;flex:1;min-width:130px;padding:3px 4px;box-shadow:none !important}
   .chipbox:focus-within{border-color:#C9BFB3}
@@ -214,13 +220,22 @@
     <div id="formView" class="pbody" hidden>
       <div class="section">
         <div class="ftitle"><h2 id="formTitle">New node</h2><button class="btn ghost sm" data-close>Close</button></div>
-        <p class="hint">Click the brain to drop a point on the surface, or type MNI coordinates. Clicks land on the cortex, so type or nudge coordinates for deep structures like the amygdala.</p>
+        <p class="hint">Click the brain to drop a point: clicks on the left hemisphere fill <b>Left</b>, on the right fill <b>Right</b>. Clicks land on the cortex, so type or nudge coordinates for deep structures like the amygdala.</p>
 
-        <label class="lbl">MNI coordinates (mm)</label>
-        <div class="xyz">
-          <label>x<input id="fx" type="number" step="1"></label>
-          <label>y<input id="fy" type="number" step="1"></label>
-          <label>z<input id="fz" type="number" step="1"></label>
+        <label class="lbl">MNI coordinates (mm) <span class="lblnote">fill one side or both</span></label>
+        <div class="xyz side">
+          <span class="sidelbl">Left</span>
+          <label>x<input id="lx" type="number" step="1"></label>
+          <label>y<input id="ly" type="number" step="1"></label>
+          <label>z<input id="lz" type="number" step="1"></label>
+          <button class="clr" data-clear="l" title="Clear left">×</button>
+        </div>
+        <div class="xyz side">
+          <span class="sidelbl">Right</span>
+          <label>x<input id="rx" type="number" step="1"></label>
+          <label>y<input id="ry" type="number" step="1"></label>
+          <label>z<input id="rz" type="number" step="1"></label>
+          <button class="clr" data-clear="r" title="Clear right">×</button>
         </div>
 
         <label class="lbl" for="froi">ROI name</label>
@@ -293,6 +308,14 @@ const today = () => new Date().toLocaleDateString('en-CA');
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
 const num = v => (v < 0 ? '−' + Math.abs(v) : String(v));
 const fmtXYZ = m => `(${m.map(num).join(', ')})`;
+// Each node has a left and/or right coordinate (either may be null).
+const nodePoints = n => [['L', n.left], ['R', n.right]].filter(([, p]) => p);
+const fmtNode = n => nodePoints(n).map(([s, p]) => `${s} ${fmtXYZ(p)}`).join(' · ');
+function migrateNode(n) {   // older notes stored one "mni" point: file it by the sign of x
+  if (n.mni && !n.left && !n.right) { if (n.mni[0] < 0) n.left = n.mni; else n.right = n.mni; }
+  delete n.mni; n.left ||= null; n.right ||= null;
+  return n;
+}
 const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
 
 const PALETTE = ['#F4A48A','#7ECDB0','#A99BE3','#F2C75C','#EE90AA','#7FB6EA','#A3C27F','#F5B26E','#C79ADB','#6FC3C6','#8FA0EB','#E99A8F'];
@@ -400,7 +423,7 @@ function ingestPaper(bibtex, { doi = '', keepKey = false } = {}) {
 /* ================= data & saving ================= */
 let data = { version: 1, papers: [], nodes: [], colors: {} };
 let saveTimer = null;
-const normalizeData = d => ({ version: 1, papers: Array.isArray(d?.papers) ? d.papers : [], nodes: Array.isArray(d?.nodes) ? d.nodes : [],
+const normalizeData = d => ({ version: 1, papers: Array.isArray(d?.papers) ? d.papers : [], nodes: Array.isArray(d?.nodes) ? d.nodes.map(migrateNode) : [],
   colors: d?.colors && typeof d.colors === 'object' ? d.colors : {} });
 function assignColors() {   // in order of first appearance, so existing notes get distinct colours
   for (const n of data.nodes) colorFor(n.roi);
@@ -545,21 +568,23 @@ const nodeGroup = new THREE.Group(); scene.add(nodeGroup);
 const nodeMeshes = new Map();
 let hoverId = null;
 
-function syncScene() {
-  const ids = new Set(data.nodes.map(n => n.id));
-  for (const [id, m] of nodeMeshes) if (!ids.has(id)) { nodeGroup.remove(m); m.material.dispose(); nodeMeshes.delete(id); }
-  for (const n of data.nodes) {
-    let m = nodeMeshes.get(n.id);
+function syncScene() {   // one sphere per hemisphere point, keyed "nodeId:L" / "nodeId:R"
+  const want = new Map();
+  for (const n of data.nodes) for (const [s, p] of nodePoints(n)) want.set(`${n.id}:${s}`, [n, p]);
+  for (const [k, m] of nodeMeshes) if (!want.has(k)) { nodeGroup.remove(m); m.material.dispose(); nodeMeshes.delete(k); }
+  for (const [k, [n, p]] of want) {
+    let m = nodeMeshes.get(k);
     if (!m) {
       m = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0 }));
-      m.userData.id = n.id; m.userData.s = 0.01; nodeGroup.add(m); nodeMeshes.set(n.id, m);
+      m.userData.id = n.id; m.userData.s = 0.01; nodeGroup.add(m); nodeMeshes.set(k, m);
     }
-    m.position.set(n.mni[0], n.mni[1], n.mni[2]);
+    m.position.set(p[0], p[1], p[2]);
     const c = new THREE.Color(colorFor(n.roi));
     m.material.color.copy(c); m.material.emissive.copy(c); m.material.emissiveIntensity = 0.22;
   }
   const hl = highlightIds();
-  for (const [id, m] of nodeMeshes) {
+  for (const m of nodeMeshes.values()) {
+    const id = m.userData.id;
     const on = !hl || hl.has(id), dim = !!hl && !on;
     if (m.material.transparent !== dim) { m.material.transparent = dim; m.material.needsUpdate = true; }
     m.material.opacity = dim ? 0.16 : 1; m.material.depthWrite = !dim;
@@ -569,18 +594,32 @@ function syncScene() {
   }
 }
 
-/* ghost marker for the add form */
-const ghost = new THREE.Group();
-ghost.add(new THREE.Mesh(new THREE.SphereGeometry(3.4, 28, 18), new THREE.MeshStandardMaterial({ color: '#3A3530', roughness: 0.4 })));
-{
+/* ghost markers for the add form: one for the left point, one for the right */
+function makeGhost() {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(3.4, 28, 18), new THREE.MeshStandardMaterial({ color: '#3A3530', roughness: 0.4 })));
   const L = 16, pts = [];
   for (const ax of [[1,0,0],[0,1,0],[0,0,1]]) pts.push(new THREE.Vector3(...ax).multiplyScalar(-L), new THREE.Vector3(...ax).multiplyScalar(L));
-  ghost.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),
+  g.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),
     new THREE.LineBasicMaterial({ color: '#3A3530', transparent: true, opacity: 0.45, depthTest: false })));
+  g.visible = false; scene.add(g);
+  return g;
 }
-ghost.visible = false; scene.add(ghost);
-function readFormXYZ() { const v = ['fx','fy','fz'].map(id => parseFloat($(id).value)); return v.some(isNaN) ? null : v; }
-function updateGhost() { const v = form && readFormXYZ(); ghost.visible = !!v; if (v) ghost.position.set(...v); }
+const ghosts = { l: makeGhost(), r: makeGhost() };
+// returns null (blank), 'partial' (some of x/y/z missing) or [x, y, z]
+function readSide(s) {
+  const raw = ['x','y','z'].map(a => $(s + a).value.trim());
+  if (raw.every(v => v === '')) return null;
+  const v = raw.map(parseFloat); return v.some(isNaN) ? 'partial' : v;
+}
+function setSide(s, v) { ['x','y','z'].forEach((a, i) => { $(s + a).value = v ? v[i] : ''; }); }
+const sideOf = v => (v[0] < 0 ? 'l' : 'r');
+function updateGhost() {
+  for (const s of ['l', 'r']) {
+    const v = form && readSide(s), ok = Array.isArray(v);
+    ghosts[s].visible = ok; if (ok) ghosts[s].position.set(...v);
+  }
+}
 
 /* camera animation */
 let fly = null;
@@ -595,13 +634,15 @@ function setView(k) {
 }
 function focusNodes(nodes) {
   if (!nodes.length) return;
+  const pts = nodes.flatMap(n => nodePoints(n).map(([, p]) => p));
+  if (!pts.length) return;
   const c = new THREE.Vector3();
-  nodes.forEach(n => c.add(new THREE.Vector3(...n.mni))); c.divideScalar(nodes.length);
+  pts.forEach(p => c.add(new THREE.Vector3(...p))); c.divideScalar(pts.length);
   const dir = c.clone().sub(center); dir.z *= 0.4;
   if (Math.abs(c.x) < 12 || dir.length() < 18) dir.copy(camera.position).sub(controls.target);
   dir.normalize(); dir.z += 0.25; dir.normalize();
   const tgt = center.clone().lerp(c, 0.6);
-  flyTo(tgt, tgt.clone().addScaledVector(dir, nodes.length > 1 ? VIEW_DIST * 0.95 : VIEW_DIST * 0.8));
+  flyTo(tgt, tgt.clone().addScaledVector(dir, pts.length > 1 ? VIEW_DIST * 0.95 : VIEW_DIST * 0.8));
 }
 
 /* picking */
@@ -613,7 +654,8 @@ function pick(ev) {
   ray.setFromCamera(ndc, camera);
   const nh = ray.intersectObjects(nodeGroup.children.filter(m => m.visible), false)[0];
   const bh = brain ? ray.intersectObject(brain, false)[0] : null;
-  return { node: nh ? data.nodes.find(n => n.id === nh.object.userData.id) : null, point: bh ? bh.point : null };
+  return { node: nh ? data.nodes.find(n => n.id === nh.object.userData.id) : null,
+           nodePos: nh ? nh.object.position.toArray() : null, point: bh ? bh.point : null };
 }
 const rnd = p => [Math.round(p.x), Math.round(p.y), Math.round(p.z)];
 
@@ -624,8 +666,8 @@ canvas.addEventListener('pointerup', e => {
   down = null;
   const h = pick(e);
   if (form) {
-    const v = h.node ? h.node.mni : h.point ? rnd(h.point) : null;
-    if (v) { $('fx').value = v[0]; $('fy').value = v[1]; $('fz').value = v[2]; updateGhost(); }
+    const v = h.nodePos || (h.point ? rnd(h.point) : null);   // fills Left or Right by which hemisphere was clicked
+    if (v) { setSide(sideOf(v), v); updateGhost(); }
     return;
   }
   if (h.node) select('roi', norm(h.node.roi), { nodeId: h.node.id, fly: false });
@@ -634,7 +676,7 @@ canvas.addEventListener('pointerup', e => {
 canvas.addEventListener('dblclick', e => {
   if (form) return;
   const h = pick(e);
-  if (h.point && !h.node) openForm(null, { mni: rnd(h.point) });
+  if (h.point && !h.node) { const v = rnd(h.point); openForm(null, { [sideOf(v) === 'l' ? 'left' : 'right']: v }); }
 });
 canvas.addEventListener('pointermove', e => { lastMove = e; });
 canvas.addEventListener('pointerleave', () => { lastMove = null; hoverId = null; $('tip').hidden = true; $('rxyz').textContent = '—'; stage.classList.remove('overnode'); });
@@ -650,9 +692,9 @@ function doHover() {
   if (h.node) {
     const n = h.node, r = stage.getBoundingClientRect();
     tip.innerHTML = `<div class="t"><span class="dot" style="background:${colorFor(n.roi)}"></span>${esc(n.roi)}</div>
-      <div class="s">${fmtXYZ(n.mni)}</div>${n.tasks?.length ? `<div>${esc(n.tasks.slice(0, 3).join(' · '))}${n.tasks.length > 3 ? ' …' : ''}</div>` : ''}`;
+      <div class="s">${fmtNode(n)}</div>${n.tasks?.length ? `<div>${esc(n.tasks.slice(0, 3).join(' · '))}${n.tasks.length > 3 ? ' …' : ''}</div>` : ''}`;
     tip.style.left = (e.clientX - r.left) + 'px'; tip.style.top = (e.clientY - r.top) + 'px'; tip.hidden = false;
-    $('rxyz').textContent = fmtXYZ(n.mni);
+    $('rxyz').textContent = fmtXYZ(h.nodePos);
   } else {
     tip.hidden = true;
     $('rxyz').textContent = h.point ? fmtXYZ(rnd(h.point)) + (form ? '  · click to place' : '') : '—';
@@ -667,16 +709,17 @@ function updateLabels() {
   const show = hl && hl.size <= 30 ? data.nodes.filter(n => hl.has(n.id)) : [];
   const keep = new Set();
   const r = stage.getBoundingClientRect();
-  for (const n of show) {
-    keep.add(n.id);
-    let el = labelEls.get(n.id);
-    if (!el) { el = document.createElement('div'); el.className = 'label'; $('labels').appendChild(el); labelEls.set(n.id, el); }
+  for (const n of show) for (const [s, p] of nodePoints(n)) {
+    const key = `${n.id}:${s}`;
+    keep.add(key);
+    let el = labelEls.get(key);
+    if (!el) { el = document.createElement('div'); el.className = 'label'; $('labels').appendChild(el); labelEls.set(key, el); }
     const txt = sel.type === 'roi'
       ? ((n.papers || []).map(k => shortCite(paperByKey(k))).join(', ') || n.roi)
       : n.roi;
     const html = `<i style="background:${colorFor(n.roi)}"></i>${esc(txt)}`;
     if (el._h !== html) { el.innerHTML = html; el._h = html; }
-    tmpV.set(...n.mni).project(camera);
+    tmpV.set(...p).project(camera);
     el.style.left = ((tmpV.x + 1) / 2 * r.width) + 'px';
     el.style.top = ((1 - tmpV.y) / 2 * r.height) + 'px';
     el.style.display = tmpV.z < 1 ? '' : 'none';
@@ -700,8 +743,9 @@ function loop(now) {
   controls.update();
   doHover();
   const pulse = 1 + 0.06 * Math.sin(now / 260);
-  for (const [id, m] of nodeMeshes) {
-    let s = (m.userData.base || 1) * (hoverId === id ? 1.25 : 1);
+  for (const m of nodeMeshes.values()) {
+    const id = m.userData.id;
+    let s =(m.userData.base || 1) * (hoverId === id ? 1.25 : 1);
     if (sel?.nodeId === id) s *= pulse;
     m.userData.s += (s - m.userData.s) * 0.2; m.scale.setScalar(m.userData.s);
   }
@@ -777,7 +821,7 @@ function paperLines(keys) {
 }
 function nodeCard(n, active) {
   return `<div class="ncard ${active ? 'active' : ''}">
-    <div class="nrow"><span class="mono">MNI ${fmtXYZ(n.mni)}</span><span class="spacer"></span>
+    <div class="nrow"><span class="mono">${nodePoints(n).map(([s, p]) => `<div><span class="side">${s === 'L' ? 'Left' : 'Right'}</span>${fmtXYZ(p)}</div>`).join('')}</span><span class="spacer"></span>
       <button class="btn ghost sm" data-act="focus" data-id="${n.id}">Focus</button>
       <button class="btn ghost sm" data-act="edit" data-id="${n.id}">Edit</button>
       <button class="btn ghost sm danger" data-act="del" data-id="${n.id}">Delete</button></div>
@@ -803,7 +847,7 @@ function renderDetail() {
       <div class="flabel">Recently added</div>
       ${recent.map(n => `<div class="item" data-act="roi" data-key="${esc(norm(n.roi))}" data-id="${n.id}" style="margin:0 -10px">
         <span class="dot" style="background:${colorFor(n.roi)}"></span><span class="two"><span class="name">${esc(n.roi)}</span>
-        <span class="sub">${esc((n.tasks || []).join(' · ') || fmtXYZ(n.mni))}</span></span></div>`).join('')}`;
+        <span class="sub">${esc((n.tasks || []).join(' · ') || fmtNode(n))}</span></span></div>`).join('')}`;
     return;
   }
   if (sel.type === 'roi') {
@@ -825,7 +869,7 @@ function renderDetail() {
       <div class="meta">${byRoi.size} ROI${byRoi.size > 1 ? 's' : ''} · ${papers.size} paper${papers.size !== 1 ? 's' : ''}</div>
       ${[...byRoi.values()].sort(byName).map(r => `<div class="roiline"><span class="dot" style="background:${colorFor(r.name)}"></span><div class="body">
         <button class="plink" data-act="roi" data-key="${esc(norm(r.name))}">${esc(r.name)}</button>
-        ${r.nodes.map(n => `<div class="mono" style="margin-top:4px">${fmtXYZ(n.mni)} <span class="muted">${(n.papers || []).map(k => esc(shortCite(paperByKey(k)))).join(', ')}</span></div>`).join('')}
+        ${r.nodes.map(n => `<div class="mono" style="margin-top:4px">${fmtNode(n)} <span class="muted">${(n.papers || []).map(k => esc(shortCite(paperByKey(k)))).join(', ')}</span></div>`).join('')}
       </div></div>`).join('')}`;
   } else {
     const p = paperByKey(sel.value); if (!p) { el.innerHTML = ''; return; }
@@ -839,7 +883,7 @@ function renderDetail() {
         <div id="bibErr" class="err" hidden></div><div class="row end" style="margin-top:6px"><button class="btn primary sm" data-act="savebib">Save BibTeX</button></div></div>` : ''}
       <div class="field" style="margin-top:16px"><div class="flabel">ROIs from this paper (${nodes.length})</div>
       ${nodes.length ? nodes.map(n => `<div class="roiline"><span class="dot" style="background:${colorFor(n.roi)}"></span><div class="body">
-          <button class="plink" data-act="roi" data-key="${esc(norm(n.roi))}" data-id="${n.id}">${esc(n.roi)}</button> <span class="mono">${fmtXYZ(n.mni)}</span>
+          <button class="plink" data-act="roi" data-key="${esc(norm(n.roi))}" data-id="${n.id}">${esc(n.roi)}</button> <span class="mono">${fmtNode(n)}</span>
           <div style="margin-top:6px">${taskChips(n.tasks)}</div></div></div>`).join('') : '<div class="muted">No nodes linked yet.</div>'}</div>`;
   }
 }
@@ -889,7 +933,7 @@ $('exportBtn').addEventListener('click', () => {
 
 function deleteNode(id) {
   const n = data.nodes.find(x => x.id === id); if (!n) return;
-  if (!confirm(`Delete the ${n.roi} node at ${fmtXYZ(n.mni)}?`)) return;
+  if (!confirm(`Delete the ${n.roi} node at ${fmtNode(n)}?`)) return;
   data.nodes = data.nodes.filter(x => x.id !== id);
   for (const k of n.papers || []) {
     const p = paperByKey(k);
@@ -922,8 +966,7 @@ function saveBibEdit() {
 /* ================= add / edit form ================= */
 function openForm(node = null, preset = {}) {
   form = { id: node?.id || null, tasks: [...(node?.tasks || preset.tasks || [])], papers: [...(node?.papers || preset.papers || [])] };
-  const m = node?.mni || preset.mni || ['', '', ''];
-  $('fx').value = m[0]; $('fy').value = m[1]; $('fz').value = m[2];
+  setSide('l', node?.left || preset.left); setSide('r', node?.right || preset.right);
   $('froi').value = node?.roi || preset.roi || '';
   $('fnotes').value = node?.notes || ''; $('ftask').value = '';
   $('formTitle').textContent = node ? 'Edit node' : 'New node';
@@ -931,10 +974,10 @@ function openForm(node = null, preset = {}) {
   $('investigate').hidden = true; $('formView').hidden = false;
   stage.classList.add('adding'); $('addBtn').textContent = 'Close form';
   closeNewPaper(); renderFormChips(); renderPaperSelect(); syncScene(); updateGhost();
-  setTimeout(() => (node || preset.mni ? $('froi') : $('fx')).focus(), 30);
+  setTimeout(() => (node || preset.left || preset.right ? $('froi') : $('lx')).focus(), 30);
 }
 function closeForm() {
-  form = null; ghost.visible = false;
+  form = null; updateGhost();
   $('formView').hidden = true; $('investigate').hidden = false;
   stage.classList.remove('adding'); $('addBtn').textContent = '+ Add node';
   syncScene();
@@ -985,7 +1028,8 @@ $('paperSelect').addEventListener('change', e => {
   else if (v && !form.papers.includes(v)) { form.papers.push(v); renderFormChips(); renderPaperSelect(); }
   e.target.value = '';
 });
-['fx','fy','fz'].forEach(id => $(id).addEventListener('input', updateGhost));
+['lx','ly','lz','rx','ry','rz'].forEach(id => $(id).addEventListener('input', updateGhost));
+document.querySelectorAll('[data-clear]').forEach(b => b.addEventListener('click', () => { setSide(b.dataset.clear, null); updateGhost(); }));
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeForm));
 $('addBtn').addEventListener('click', () => form ? closeForm() : openForm());
 $('formDelete').addEventListener('click', () => deleteNode(form.id));
@@ -994,13 +1038,15 @@ $('formSave').addEventListener('click', saveForm);
 function saveForm() {
   if ($('ftask').value.trim()) addTask($('ftask').value);
   const err = $('formErr'); const fail = m => { err.textContent = m; err.hidden = false; };
-  const mni = readFormXYZ();
-  if (!mni) return fail('Add x, y and z coordinates (click the brain or type them).');
-  if (mni.some(v => Math.abs(v) > 120)) return fail('Those coordinates are outside the brain. MNI values are in mm, roughly −90…90.');
+  const L = readSide('l'), R = readSide('r');
+  if (L === 'partial' || R === 'partial') return fail('Each side needs all of x, y and z, or leave that side blank.');
+  if (!L && !R) return fail('Add coordinates for the left side, the right side, or both (click the brain or type them).');
+  if ([L, R].some(v => v && v.some(c => Math.abs(c) > 120))) return fail('Those coordinates are outside the brain. MNI values are in mm, roughly −90…90.');
+  const r1 = v => v && v.map(c => Math.round(c * 10) / 10);
   const roiRaw = $('froi').value.trim(); if (!roiRaw) return fail('Give the ROI a name.');
   const roi = canonical(roiRaw, roiGroups());
   const old = form.id ? data.nodes.find(n => n.id === form.id) : null;
-  const rec = { id: form.id || uid(), roi, mni: mni.map(v => Math.round(v * 10) / 10), tasks: form.tasks, papers: form.papers,
+  const rec = { id: form.id || uid(), roi, left: r1(L), right: r1(R), tasks: form.tasks, papers: form.papers,
                 notes: $('fnotes').value.trim(), added: old?.added || today() };
   if (old) Object.assign(old, rec); else data.nodes.push(rec);
   closeForm();

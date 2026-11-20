@@ -20,12 +20,22 @@ import webbrowser
 from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-HOST, PORT = "127.0.0.1", 8765
+def arg(name, default=None):
+    """Optional command-line flags: --notes DIR, --port N, --no-browser."""
+    if name in sys.argv:
+        i = sys.argv.index(name)
+        return sys.argv[i + 1] if i + 1 < len(sys.argv) else default
+    return default
+
+
+HOST, PORT = "127.0.0.1", int(arg("--port", 8765))
 ROOT = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(ROOT, "config.json")
 
 
 def notes_dir():
+    if arg("--notes"):
+        return os.path.abspath(os.path.expanduser(arg("--notes")))
     path = "notes"
     if os.path.exists(CONFIG):
         try:
