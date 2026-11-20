@@ -1,4 +1,8 @@
 # BrainNotes
+<div align="center">
+  <img src="assets/brainnotes.png" alt="BrainNotes Interface" style="width:90%; float: left; margin-right: 2%;" />
+  <br>
+</div>
 
 A 3D brain notebook for keeping track of the regions you read about. Each node in MNI space records:
 
